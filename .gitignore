@@ -1,0 +1,34 @@
+﻿# Arquivos de configuração sensíveis
+config/database.php
+
+# Uploads de usuários
+assets/uploads/*
+!assets/uploads/.gitkeep
+
+# Logs
+*.log
+
+# Cache do sistema
+cache/
+temp/
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dependências
+vendor/
+composer.lock
+
+# Arquivos temporários
+*.tmp
+*.bak
+*.old

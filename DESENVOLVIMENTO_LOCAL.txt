@@ -1,0 +1,94 @@
+================================================================================
+GUIA DE DESENVOLVIMENTO LOCAL - SISTEMA DE CHAMADA
+================================================================================
+
+Autor: Thiago Mourão
+Instagram: https://www.instagram.com/mouraoeguerin/
+Data: 2026-02-11 17:30:00
+
+================================================================================
+OPÇÃO 1: USAR PHP EMBUTIDO (RECOMENDADO)
+================================================================================
+
+O PHP possui um servidor web embutido perfeito para desenvolvimento local.
+
+PASSO 1: Instalar PHP
+----------------------
+1. Acesse: https://windows.php.net/download/
+2. Baixe a versão "VS16 x64 Thread Safe" (ZIP)
+3. Extraia para C:\php
+4. Adicione C:\php ao PATH do Windows
+
+PASSO 2: Iniciar o Servidor
+----------------------------
+Abra o PowerShell nesta pasta e execute:
+
+    php -S localhost:8000
+
+PASSO 3: Acessar o Sistema
+---------------------------
+Abra o navegador em: http://localhost:8000/instalar.php
+
+O sistema continuará usando o banco de dados REMOTO que você já configurou!
+
+================================================================================
+OPÇÃO 2: INSTALAR XAMPP (AMBIENTE COMPLETO)
+================================================================================
+
+XAMPP inclui PHP, MySQL e Apache em um único pacote.
+
+1. Baixe: https://www.apachefriends.org/
+2. Instale em C:\xampp
+3. Inicie o Apache pelo painel de controle do XAMPP
+4. Copie a pasta do projeto para C:\xampp\htdocs\
+5. Acesse: http://localhost/Chamada%20DED/instalar.php
+
+================================================================================
+OPÇÃO 3: INSTALAR LARAGON (MAIS MODERNO)
+================================================================================
+
+Laragon é mais leve e moderno que XAMPP.
+
+1. Baixe: https://laragon.org/download/
+2. Instale (instalação automática)
+3. Copie a pasta do projeto para C:\laragon\www\
+4. Laragon detecta automaticamente
+5. Acesse: http://chamada-ded.test/instalar.php
+
+================================================================================
+DESENVOLVIMENTO COM BANCO REMOTO
+================================================================================
+
+VANTAGEM: Você pode desenvolver localmente e usar o banco de dados remoto!
+
+O arquivo config/database.php já está configurado com:
+- Host: 186.209.113.101
+- Banco: cemaneto_chamadaded
+- Usuário: cemaneto_chamadaded
+
+Isso significa:
+✓ Você desenvolve e testa localmente
+✓ Os dados ficam no servidor remoto
+✓ Não precisa configurar MySQL local
+✓ Quando estiver pronto, só fazer upload dos arquivos
+
+================================================================================
+TESTANDO O SISTEMA LOCALMENTE
+================================================================================
+
+1. Instale o PHP (opção 1, 2 ou 3 acima)
+2. Execute: php -S localhost:8000
+3. Acesse: http://localhost:8000/instalar.php
+4. Crie as tabelas no banco remoto
+5. Acesse: http://localhost:8000/login.php
+6. Faça login com: admin@sistema.com / admin123
+7. Teste todas as funcionalidades
+
+================================================================================
+SCRIPTS AUXILIARES CRIADOS
+================================================================================
+
+iniciar_servidor.bat - Inicia o servidor PHP automaticamente
+testar_conexao.php - Testa a conexão com o banco remoto
+
+================================================================================

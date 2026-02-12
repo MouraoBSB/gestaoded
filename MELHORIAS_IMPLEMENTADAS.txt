@@ -1,0 +1,124 @@
+================================================================================
+MELHORIAS IMPLEMENTADAS - SISTEMA DE CHAMADA
+================================================================================
+
+Autor: Thiago Mourão
+Instagram: https://www.instagram.com/mouraoeguerin/
+Data: 2026-02-11 18:02:00
+
+================================================================================
+RESUMO DAS MELHORIAS
+================================================================================
+
+✅ 1. BOTÃO "VOLTAR AO INÍCIO"
+   - Adicionado no header de todas as páginas
+   - Localização: includes/header.php
+
+✅ 2. PÁGINA DE GERENCIAMENTO DE INSTRUTORES
+   - Nova página: gestor/instrutores.php
+   - Funcionalidades:
+     * CRUD completo de instrutores
+     * Upload de foto com crop 150x150px
+     * Listagem com fotos de perfil
+   - Link adicionado no dashboard do gestor
+
+✅ 3. CONFIGURAÇÕES SMTP
+   - Nova página: gestor/configuracoes.php
+   - Permite configurar servidor de email para reset de senha
+   - Campos: Host, Porta, Usuário, Senha, Segurança (TLS/SSL)
+   - Link adicionado no dashboard do gestor
+
+✅ 4. BIBLIOTECA DE CROP DE IMAGENS
+   - Arquivo: assets/js/image-crop.js
+   - Modal de crop: includes/crop-modal.php
+   - Usa CropperJS para recorte preciso
+   - Suporta diferentes dimensões:
+     * 150x150px para perfis (alunos e instrutores)
+     * 1080x1350px para capas de cursos
+
+✅ 5. LINK PARA VINCULAR ALUNOS A CURSOS
+   - Adicionado no dashboard do gestor
+   - Redireciona para: diretor/matriculas.php
+   - Funcionalidade já existente, agora mais acessível
+
+================================================================================
+MELHORIAS PENDENTES (REQUEREM ATUALIZAÇÃO DO BANCO)
+================================================================================
+
+⏳ 1. MÚLTIPLOS INSTRUTORES POR CURSO (1 a 4)
+   - Nova tabela: curso_instrutores
+   - Permite vincular até 4 instrutores por curso
+
+⏳ 2. FOTO PARA INSTRUTORES
+   - Novo campo: usuarios.foto
+   - Crop de 150x150px
+
+⏳ 3. CAPA PARA CURSOS
+   - Novo campo: cursos.capa
+   - Crop de 1080x1350px
+
+⏳ 4. DATA DE NASCIMENTO OPCIONAL
+   - Campo data_nascimento será opcional para usuários
+   - Obrigatório apenas para alunos
+
+⏳ 5. SISTEMA DE RESET DE SENHA
+   - Nova tabela: password_resets
+   - Nova tabela: configuracoes (para SMTP)
+
+================================================================================
+COMO APLICAR AS ATUALIZAÇÕES DO BANCO DE DADOS
+================================================================================
+
+PASSO 1: Acessar o instalador de atualizações
+---------------------------------------------
+Acesse no navegador:
+http://localhost:8000/atualizar.php
+
+OU
+
+PASSO 2: Executar SQL manualmente via phpMyAdmin
+-------------------------------------------------
+1. Acesse phpMyAdmin do servidor remoto
+2. Selecione o banco: cemaneto_chamadaded
+3. Clique na aba SQL
+4. Abra o arquivo: atualizar_banco.sql
+5. Copie todo o conteúdo
+6. Cole e execute
+
+================================================================================
+ARQUIVOS CRIADOS/MODIFICADOS
+================================================================================
+
+NOVOS ARQUIVOS:
+- gestor/instrutores.php
+- gestor/configuracoes.php
+- assets/js/image-crop.js
+- includes/crop-modal.php
+- atualizar_banco.sql
+- atualizar.php (será criado)
+
+ARQUIVOS MODIFICADOS:
+- includes/header.php (botão Início)
+- gestor/dashboard.php (novos links)
+
+PRÓXIMOS ARQUIVOS A MODIFICAR (após atualização do banco):
+- gestor/alunos.php (adicionar crop de imagem)
+- gestor/cursos.php (múltiplos instrutores + capa com crop)
+- gestor/usuarios.php (data nascimento opcional)
+
+================================================================================
+INSTRUÇÕES PARA CONTINUAR
+================================================================================
+
+1. Execute o script de atualização do banco de dados
+2. Teste as novas funcionalidades:
+   - Gerenciar Instrutores (com foto)
+   - Configurações SMTP
+   - Crop de imagens
+
+3. Após confirmar que está funcionando, continuarei com:
+   - Atualização da página de cursos (múltiplos instrutores + capa)
+   - Atualização da página de alunos (crop de foto)
+   - Sistema de reset de senha por email
+
+================================================================================

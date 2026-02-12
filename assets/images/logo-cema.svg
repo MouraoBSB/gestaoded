@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60">
+  <text x="10" y="40" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#4e4483">CURSOS</text>
+  <text x="10" y="55" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#4e4483">CEMA</text>
+  <circle cx="170" cy="30" r="25" fill="none" stroke="#4e4483" stroke-width="3"/>
+  <path d="M 170 15 L 175 25 L 165 25 Z" fill="#e79048"/>
+  <rect x="165" y="28" width="10" height="12" fill="none" stroke="#4e4483" stroke-width="2" rx="2"/>
+  <path d="M 175 35 Q 180 32 178 28" fill="none" stroke="#e79048" stroke-width="2"/>
+</svg>
