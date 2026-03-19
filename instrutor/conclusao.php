@@ -41,15 +41,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$cursoId]);
         
         $stmt = $pdo->prepare("
-            INSERT INTO conclusoes (aluno_id, curso_id, aprovado, ano_conclusao, observacoes) 
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO conclusoes (aluno_id, curso_id, status, observacoes) 
+            VALUES (?, ?, ?, ?)
         ");
         
         foreach ($conclusoes as $alunoId => $dados) {
             if (isset($dados['status'])) {
-                $aprovado = $dados['status'] === 'aprovado' ? 1 : 0;
+                $status = $dados['status'];
                 $observacoes = sanitize($dados['observacoes'] ?? '');
-                $stmt->execute([$alunoId, $cursoId, $aprovado, $anoConclusao, $observacoes]);
+                $stmt->execute([$alunoId, $cursoId, $status, $observacoes]);
             }
         }
         
@@ -64,16 +64,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $alunos = $pdo->prepare("
     SELECT a.id, a.nome, a.foto,
-           c.aprovado, c.ano_conclusao, c.observacoes,
+           c.status, c.observacoes,
            COUNT(DISTINCT aulas.id) as total_aulas,
-           SUM(CASE WHEN p.presente = 1 THEN 1 ELSE 0 END) as total_presencas
+           SUM(CASE WHEN p.presente IN (1,2) THEN 1 ELSE 0 END) as total_presencas
     FROM matriculas m
     INNER JOIN alunos a ON m.aluno_id = a.id
     LEFT JOIN conclusoes c ON c.aluno_id = a.id AND c.curso_id = m.curso_id
     LEFT JOIN aulas ON aulas.curso_id = m.curso_id
     LEFT JOIN presencas p ON p.aula_id = aulas.id AND p.aluno_id = a.id
     WHERE m.curso_id = ? AND a.ativo = 1
-    GROUP BY a.id, a.nome, a.foto, c.aprovado, c.ano_conclusao, c.observacoes
+    GROUP BY a.id, a.nome, a.foto, c.status, c.observacoes
     ORDER BY a.nome
 ");
 $alunos->execute([$cursoId]);
@@ -123,9 +123,7 @@ require_once __DIR__ . '/../includes/header.php';
                             $percentualPresenca = $aluno['total_aulas'] > 0 
                                 ? round(($aluno['total_presencas'] / $aluno['total_aulas']) * 100) 
                                 : 0;
-                            $statusAtual = $aluno['aprovado'] !== null 
-                                ? ($aluno['aprovado'] ? 'aprovado' : 'reprovado') 
-                                : '';
+                            $statusAtual = $aluno['status'] ?? '';
                         ?>
                         <tr class="hover:bg-gray-50">
                             <td class="px-6 py-4 whitespace-nowrap">

@@ -7,9 +7,10 @@
 
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/config/database.php';
 
 if (isLoggedIn()) {
-    redirect('/index.php');
+    redirect('/gestao.php');
 }
 
 $erro = '';
@@ -17,9 +18,10 @@ $erro = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = sanitize($_POST['email'] ?? '');
     $senha = $_POST['senha'] ?? '';
+    $lembrar = isset($_POST['lembrar']);
     
-    if (login($email, $senha)) {
-        redirect('/index.php');
+    if (login($email, $senha, $lembrar)) {
+        redirect('/gestao.php');
     } else {
         $erro = 'Email ou senha inválidos';
     }
@@ -30,7 +32,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Gestão de Cursos CEMA</title>
+<?php
+    $seoConfigs = getSeoConfigs();
+    $seoSiteTitle = $seoConfigs['seo_titulo_site'] ?? 'Gestão de Cursos CEMA';
+?>
+    <title>Login - <?= htmlspecialchars($seoSiteTitle) ?></title>
+<?= renderSeoMeta('Login') ?>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4" style="background: linear-gradient(135deg, #4e4483 0%, #6e9fcb 50%, #89ab98 100%);">
@@ -58,6 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label for="senha" class="block text-sm font-medium mb-2" style="color: #4e4483;">Senha</label>
                 <input type="password" id="senha" name="senha" required
                     class="w-full px-4 py-3 border-2 rounded-lg transition" style="border-color: #89ab98; focus:border-color: #4e4483; focus:ring-2; focus:ring-color: #6e9fcb;">
+            </div>
+            
+            <div class="flex items-center">
+                <input type="checkbox" id="lembrar" name="lembrar" value="1"
+                    class="w-4 h-4 rounded border-gray-300 focus:ring-2" style="color: #4e4483; focus:ring-color: #6e9fcb;">
+                <label for="lembrar" class="ml-2 text-sm font-medium" style="color: #4e4483;">
+                    Lembrar-me por 30 dias
+                </label>
             </div>
             
             <button type="submit"

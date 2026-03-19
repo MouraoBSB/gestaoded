@@ -1,5 +1,6 @@
-﻿# Arquivos de configuração sensíveis
+# Arquivos de configuração sensíveis
 config/database.php
+deploy.ps1
 
 # Uploads de usuários
 assets/uploads/*

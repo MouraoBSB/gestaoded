@@ -18,8 +18,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if ($acao === 'criar') {
         $nome = sanitize($_POST['nome']);
-        $ano = (int)$_POST['ano'];
-        $instrutoresIds = $_POST['instrutores_ids'] ?? [];
+        $descricao = sanitize($_POST['descricao'] ?? '');
+        $preRequisito = sanitize($_POST['pre_requisito'] ?? '');
+        $cargaHoraria = (int)$_POST['carga_horaria'];
+        $tipoPeriodo = $_POST['tipo_periodo'];
+        $diasSemana = isset($_POST['dias_semana']) ? json_encode($_POST['dias_semana']) : null;
+        $horarioInicio = !empty($_POST['horario_inicio']) ? $_POST['horario_inicio'] : null;
+        $horarioFim = !empty($_POST['horario_fim']) ? $_POST['horario_fim'] : null;
         
         $capa = null;
         if (isset($_FILES['capa']) && $_FILES['capa']['error'] === UPLOAD_ERR_OK) {
@@ -31,23 +36,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         try {
-            $pdo->beginTransaction();
-            
-            $stmt = $pdo->prepare("INSERT INTO cursos (nome, ano, capa) VALUES (?, ?, ?)");
-            $stmt->execute([$nome, $ano, $capa]);
-            $cursoId = $pdo->lastInsertId();
-            
-            // Adicionar instrutores (máximo 4)
-            $instrutoresIds = array_slice(array_filter($instrutoresIds), 0, 4);
-            foreach ($instrutoresIds as $instrutorId) {
-                $stmt = $pdo->prepare("INSERT INTO curso_instrutores (curso_id, instrutor_id) VALUES (?, ?)");
-                $stmt->execute([$cursoId, (int)$instrutorId]);
-            }
-            
-            $pdo->commit();
-            setFlashMessage('Curso criado com sucesso!', 'success');
+            $stmt = $pdo->prepare("INSERT INTO cursos (nome, descricao, pre_requisito, dias_semana, horario_inicio, horario_fim, carga_horaria, tipo_periodo, capa) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$nome, $descricao, $preRequisito, $diasSemana, $horarioInicio, $horarioFim, $cargaHoraria, $tipoPeriodo, $capa]);
+            setFlashMessage('Curso criado com sucesso! Agora crie turmas para este curso.', 'success');
         } catch (PDOException $e) {
-            $pdo->rollBack();
             setFlashMessage('Erro ao criar curso: ' . $e->getMessage(), 'error');
         }
         redirect('/gestor/cursos.php');
@@ -56,11 +48,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($acao === 'editar') {
         $id = (int)$_POST['id'];
         $nome = sanitize($_POST['nome']);
-        $ano = (int)$_POST['ano'];
-        $instrutoresIds = $_POST['instrutores_ids'] ?? [];
+        $descricao = sanitize($_POST['descricao'] ?? '');
+        $preRequisito = sanitize($_POST['pre_requisito'] ?? '');
+        $cargaHoraria = (int)$_POST['carga_horaria'];
+        $tipoPeriodo = $_POST['tipo_periodo'];
+        $diasSemana = isset($_POST['dias_semana']) ? json_encode($_POST['dias_semana']) : null;
+        $horarioInicio = !empty($_POST['horario_inicio']) ? $_POST['horario_inicio'] : null;
+        $horarioFim = !empty($_POST['horario_fim']) ? $_POST['horario_fim'] : null;
         
-        $sql = "UPDATE cursos SET nome = ?, ano = ?";
-        $params = [$nome, $ano];
+        $sql = "UPDATE cursos SET nome = ?, descricao = ?, pre_requisito = ?, dias_semana = ?, horario_inicio = ?, horario_fim = ?, carga_horaria = ?, tipo_periodo = ?";
+        $params = [$nome, $descricao, $preRequisito, $diasSemana, $horarioInicio, $horarioFim, $cargaHoraria, $tipoPeriodo];
         
         if (isset($_FILES['capa']) && $_FILES['capa']['error'] === UPLOAD_ERR_OK) {
             $capa = uploadFoto($_FILES['capa'], 'cursos');
@@ -74,25 +71,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $params[] = $id;
         
         try {
-            $pdo->beginTransaction();
-            
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            
-            // Remover instrutores antigos
-            $pdo->prepare("DELETE FROM curso_instrutores WHERE curso_id = ?")->execute([$id]);
-            
-            // Adicionar novos instrutores (máximo 4)
-            $instrutoresIds = array_slice(array_filter($instrutoresIds), 0, 4);
-            foreach ($instrutoresIds as $instrutorId) {
-                $stmt = $pdo->prepare("INSERT INTO curso_instrutores (curso_id, instrutor_id) VALUES (?, ?)");
-                $stmt->execute([$id, (int)$instrutorId]);
-            }
-            
-            $pdo->commit();
             setFlashMessage('Curso atualizado com sucesso!', 'success');
         } catch (PDOException $e) {
-            $pdo->rollBack();
             setFlashMessage('Erro ao atualizar curso: ' . $e->getMessage(), 'error');
         }
         redirect('/gestor/cursos.php');
@@ -109,17 +91,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $cursos = $pdo->query("
     SELECT c.*,
-           GROUP_CONCAT(u.nome ORDER BY u.nome SEPARATOR ', ') as instrutores_nomes,
-           GROUP_CONCAT(u.id ORDER BY u.nome SEPARATOR ',') as instrutores_ids
+           COUNT(DISTINCT t.id) as total_turmas
     FROM cursos c
-    LEFT JOIN curso_instrutores ci ON c.id = ci.curso_id
-    LEFT JOIN usuarios u ON ci.instrutor_id = u.id
+    LEFT JOIN turmas t ON c.id = t.curso_id
     WHERE c.ativo = 1
     GROUP BY c.id
-    ORDER BY c.ano DESC, c.nome
+    ORDER BY c.nome
 ")->fetchAll();
-
-$instrutores = $pdo->query("SELECT id, nome FROM usuarios WHERE tipo = 'instrutor' AND ativo = 1 ORDER BY nome")->fetchAll();
 
 $pageTitle = 'Gerenciar Cursos - Gestor';
 require_once __DIR__ . '/../includes/header.php';
@@ -139,9 +117,10 @@ require_once __DIR__ . '/../includes/header.php';
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capa</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome do Curso</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ano</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Instrutor</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Carga Horária</th>
+                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Turmas</th>
+                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
@@ -158,20 +137,26 @@ require_once __DIR__ . '/../includes/header.php';
                             </div>
                         <?php endif; ?>
                     </td>
+                    <td class="px-6 py-4">
+                        <div class="text-sm font-medium text-gray-900"><?= htmlspecialchars($curso['nome']) ?></div>
+                        <?php if ($curso['descricao']): ?>
+                            <div class="text-xs text-gray-500 mt-1"><?= htmlspecialchars(substr($curso['descricao'], 0, 60)) ?><?= strlen($curso['descricao']) > 60 ? '...' : '' ?></div>
+                        <?php endif; ?>
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <a href="/diretor/curso_detalhes.php?id=<?= $curso['id'] ?>" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline">
-                            <?= htmlspecialchars($curso['nome']) ?>
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full <?= $curso['tipo_periodo'] === 'anual' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800' ?>">
+                            <?= ucfirst($curso['tipo_periodo']) ?>
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-center">
+                        <div class="text-sm text-gray-900"><?= $curso['carga_horaria'] ?>h</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-center">
+                        <a href="/gestor/turmas.php?curso=<?= $curso['id'] ?>" class="text-sm font-semibold text-purple-600 hover:text-purple-800">
+                            <?= $curso['total_turmas'] ?> turma<?= $curso['total_turmas'] != 1 ? 's' : '' ?>
                         </a>
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-600"><?= $curso['ano'] ?></div>
-                    </td>
-                    <td class="px-6 py-4">
-                        <div class="text-sm text-gray-600">
-                            <?= $curso['instrutores_nomes'] ? htmlspecialchars($curso['instrutores_nomes']) : '<span class="text-gray-400">Não atribuído</span>' ?>
-                        </div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    <td class="px-6 py-4 whitespace-nowrap text-center text-sm">
                         <button onclick='editarCurso(<?= json_encode($curso) ?>)' 
                             class="text-blue-600 hover:text-blue-900 mr-3">Editar</button>
                         <button onclick="confirmarDesativar(<?= $curso['id'] ?>)" 
@@ -193,29 +178,75 @@ require_once __DIR__ . '/../includes/header.php';
         <form method="POST" enctype="multipart/form-data" class="space-y-4">
             <input type="hidden" name="acao" value="criar">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Curso</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Curso *</label>
                 <input type="text" name="nome" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Ano</label>
-                <input type="number" name="ano" required min="2000" max="2100" value="<?= date('Y') ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                <textarea name="descricao" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Instrutores (selecione de 1 a 4)</label>
-                <div class="space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                    <?php foreach ($instrutores as $instrutor): ?>
-                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                            <input type="checkbox" name="instrutores_ids[]" value="<?= $instrutor['id'] ?>" 
-                                   class="instrutor-checkbox rounded text-purple-600 focus:ring-purple-500"
-                                   onchange="limitarInstrutores(this)">
-                            <span class="text-sm"><?= htmlspecialchars($instrutor['nome']) ?></span>
-                        </label>
-                    <?php endforeach; ?>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pré-requisito</label>
+                <textarea name="pre_requisito" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500" placeholder="Ex: Conhecimento básico de doutrina espírita"></textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Dias da Semana</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="segunda" class="form-checkbox h-4 w-4 text-purple-600">
+                        <span class="ml-2 text-sm text-gray-700">Segunda</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="terca" class="form-checkbox h-4 w-4 text-purple-600">
+                        <span class="ml-2 text-sm text-gray-700">Terça</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="quarta" class="form-checkbox h-4 w-4 text-purple-600">
+                        <span class="ml-2 text-sm text-gray-700">Quarta</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="quinta" class="form-checkbox h-4 w-4 text-purple-600">
+                        <span class="ml-2 text-sm text-gray-700">Quinta</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="sexta" class="form-checkbox h-4 w-4 text-purple-600">
+                        <span class="ml-2 text-sm text-gray-700">Sexta</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="sabado" class="form-checkbox h-4 w-4 text-purple-600">
+                        <span class="ml-2 text-sm text-gray-700">Sábado</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="domingo" class="form-checkbox h-4 w-4 text-purple-600">
+                        <span class="ml-2 text-sm text-gray-700">Domingo</span>
+                    </label>
                 </div>
-                <p class="text-xs text-gray-500 mt-1">Máximo de 4 instrutores por curso</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Horário Início</label>
+                    <input type="time" name="horario_inicio" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Horário Fim</label>
+                    <input type="time" name="horario_fim" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Carga Horária *</label>
+                    <input type="number" name="carga_horaria" required min="1" value="40" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Período *</label>
+                    <select name="tipo_periodo" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                        <option value="semestral">Semestral</option>
+                        <option value="anual">Anual</option>
+                    </select>
+                </div>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Capa do Curso (1080x1350px)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Capa do Curso (600x1000px - Formato Livro)</label>
                 <input type="file" name="capa" id="capaInputCriar" accept="image/*" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
                 <img id="capaPreviewCriar" class="hidden mt-2 w-full max-w-xs rounded-lg object-cover border-2 border-gray-300">
             </div>
@@ -236,29 +267,75 @@ require_once __DIR__ . '/../includes/header.php';
             <input type="hidden" name="acao" value="editar">
             <input type="hidden" name="id" id="edit_id">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Curso</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nome do Curso *</label>
                 <input type="text" name="nome" id="edit_nome" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Ano</label>
-                <input type="number" name="ano" id="edit_ano" required min="2000" max="2100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+                <textarea name="descricao" id="edit_descricao" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Instrutores (selecione de 1 a 4)</label>
-                <div id="edit_instrutores_container" class="space-y-2 max-h-40 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                    <?php foreach ($instrutores as $instrutor): ?>
-                        <label class="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                            <input type="checkbox" name="instrutores_ids[]" value="<?= $instrutor['id'] ?>" 
-                                   class="instrutor-checkbox-edit rounded text-purple-600 focus:ring-purple-500"
-                                   onchange="limitarInstrutoresEdit(this)">
-                            <span class="text-sm"><?= htmlspecialchars($instrutor['nome']) ?></span>
-                        </label>
-                    <?php endforeach; ?>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pré-requisito</label>
+                <textarea name="pre_requisito" id="edit_pre_requisito" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Dias da Semana</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="segunda" class="form-checkbox h-4 w-4 text-purple-600 edit-dia-semana" data-dia="segunda">
+                        <span class="ml-2 text-sm text-gray-700">Segunda</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="terca" class="form-checkbox h-4 w-4 text-purple-600 edit-dia-semana" data-dia="terca">
+                        <span class="ml-2 text-sm text-gray-700">Terça</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="quarta" class="form-checkbox h-4 w-4 text-purple-600 edit-dia-semana" data-dia="quarta">
+                        <span class="ml-2 text-sm text-gray-700">Quarta</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="quinta" class="form-checkbox h-4 w-4 text-purple-600 edit-dia-semana" data-dia="quinta">
+                        <span class="ml-2 text-sm text-gray-700">Quinta</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="sexta" class="form-checkbox h-4 w-4 text-purple-600 edit-dia-semana" data-dia="sexta">
+                        <span class="ml-2 text-sm text-gray-700">Sexta</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="sabado" class="form-checkbox h-4 w-4 text-purple-600 edit-dia-semana" data-dia="sabado">
+                        <span class="ml-2 text-sm text-gray-700">Sábado</span>
+                    </label>
+                    <label class="flex items-center">
+                        <input type="checkbox" name="dias_semana[]" value="domingo" class="form-checkbox h-4 w-4 text-purple-600 edit-dia-semana" data-dia="domingo">
+                        <span class="ml-2 text-sm text-gray-700">Domingo</span>
+                    </label>
                 </div>
-                <p class="text-xs text-gray-500 mt-1">Máximo de 4 instrutores por curso</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Horário Início</label>
+                    <input type="time" name="horario_inicio" id="edit_horario_inicio" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Horário Fim</label>
+                    <input type="time" name="horario_fim" id="edit_horario_fim" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Carga Horária *</label>
+                    <input type="number" name="carga_horaria" id="edit_carga_horaria" required min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tipo de Período *</label>
+                    <select name="tipo_periodo" id="edit_tipo_periodo" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                        <option value="semestral">Semestral</option>
+                        <option value="anual">Anual</option>
+                    </select>
+                </div>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Nova Capa (1080x1350px - deixe em branco para não alterar)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nova Capa (600x1000px - Formato Livro - deixe em branco para não alterar)</label>
                 <input type="file" name="capa" id="capaInputEditar" accept="image/*" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
                 <img id="capaPreviewEditar" class="hidden mt-2 w-full max-w-xs rounded-lg object-cover border-2 border-gray-300">
             </div>
@@ -286,41 +363,26 @@ function fecharModal(id) {
 function editarCurso(curso) {
     document.getElementById('edit_id').value = curso.id;
     document.getElementById('edit_nome').value = curso.nome;
-    document.getElementById('edit_ano').value = curso.ano;
+    document.getElementById('edit_descricao').value = curso.descricao || '';
+    document.getElementById('edit_pre_requisito').value = curso.pre_requisito || '';
+    document.getElementById('edit_carga_horaria').value = curso.carga_horaria || 40;
+    document.getElementById('edit_tipo_periodo').value = curso.tipo_periodo || 'semestral';
     
-    // Desmarcar todos os checkboxes
-    document.querySelectorAll('.instrutor-checkbox-edit').forEach(cb => cb.checked = false);
-    
-    // Marcar instrutores do curso
-    if (curso.instrutores_ids) {
-        const instrutoresIds = curso.instrutores_ids.split(',');
-        instrutoresIds.forEach(id => {
-            const checkbox = document.querySelector(`.instrutor-checkbox-edit[value="${id}"]`);
-            if (checkbox) checkbox.checked = true;
-        });
+    document.querySelectorAll('.edit-dia-semana').forEach(cb => cb.checked = false);
+    if (curso.dias_semana) {
+        try {
+            const dias = JSON.parse(curso.dias_semana);
+            dias.forEach(dia => {
+                const checkbox = document.querySelector(`.edit-dia-semana[data-dia="${dia}"]`);
+                if (checkbox) checkbox.checked = true;
+            });
+        } catch (e) {}
     }
+    
+    document.getElementById('edit_horario_inicio').value = curso.horario_inicio || '';
+    document.getElementById('edit_horario_fim').value = curso.horario_fim || '';
     
     abrirModal('modalEditar');
-}
-
-function limitarInstrutores(checkbox) {
-    const checkboxes = document.querySelectorAll('.instrutor-checkbox');
-    const selecionados = Array.from(checkboxes).filter(cb => cb.checked);
-    
-    if (selecionados.length > 4) {
-        checkbox.checked = false;
-        alert('Você pode selecionar no máximo 4 instrutores por curso.');
-    }
-}
-
-function limitarInstrutoresEdit(checkbox) {
-    const checkboxes = document.querySelectorAll('.instrutor-checkbox-edit');
-    const selecionados = Array.from(checkboxes).filter(cb => cb.checked);
-    
-    if (selecionados.length > 4) {
-        checkbox.checked = false;
-        alert('Você pode selecionar no máximo 4 instrutores por curso.');
-    }
 }
 
 function confirmarDesativar(id) {
@@ -331,8 +393,8 @@ function confirmarDesativar(id) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    initImageCrop('capaInputCriar', 'capaPreviewCriar', 1080, 1350);
-    initImageCrop('capaInputEditar', 'capaPreviewEditar', 1080, 1350);
+    initImageCrop('capaInputCriar', 'capaPreviewCriar', 600, 1000);
+    initImageCrop('capaInputEditar', 'capaPreviewEditar', 600, 1000);
 });
 </script>
 

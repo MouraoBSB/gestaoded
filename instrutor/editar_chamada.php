@@ -20,7 +20,7 @@ if (!$aulaId) {
 }
 
 $stmt = $pdo->prepare("
-    SELECT a.*, c.nome as curso_nome, c.id as curso_id
+    SELECT a.*, c.nome as curso_nome, c.id as curso_id, a.turma_id
     FROM aulas a
     INNER JOIN cursos c ON a.curso_id = c.id
     WHERE a.id = ?
@@ -37,23 +37,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dataAula = $_POST['data_aula'] ?? $aula['data_aula'];
     $descricao = sanitize($_POST['descricao'] ?? '');
     $presencas = $_POST['presenca'] ?? [];
-    
+    $observacoes = $_POST['observacao'] ?? [];
+
     try {
         $pdo->beginTransaction();
-        
+
         $stmt = $pdo->prepare("UPDATE aulas SET data_aula = ?, descricao = ? WHERE id = ?");
         $stmt->execute([$dataAula, $descricao, $aulaId]);
-        
-        $stmt = $pdo->prepare("UPDATE presencas SET presente = ? WHERE aula_id = ? AND aluno_id = ?");
-        
+
+        $stmt = $pdo->prepare("UPDATE presencas SET presente = ?, observacao = ? WHERE aula_id = ? AND aluno_id = ?");
+
         foreach ($presencas as $alunoId => $presente) {
-            $stmt->execute([$presente === '1' ? 1 : 0, $aulaId, $alunoId]);
+            $obs = isset($observacoes[$alunoId]) ? trim($observacoes[$alunoId]) : null;
+            $valorPresenca = in_array((int)$presente, [0, 1, 2]) ? (int)$presente : 0;
+            $stmt->execute([$valorPresenca, $obs ?: null, $aulaId, $alunoId]);
         }
-        
+
         $pdo->commit();
-        
+
         setFlashMessage('Chamada atualizada com sucesso!', 'success');
-        redirect('/instrutor/historico_chamadas.php?curso_id=' . $aula['curso_id']);
+        $redirectParam = $aula['turma_id'] ? 'turma_id=' . $aula['turma_id'] : 'curso_id=' . $aula['curso_id'];
+        redirect('/instrutor/historico_chamadas.php?' . $redirectParam);
         
     } catch (Exception $e) {
         $pdo->rollBack();
@@ -62,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $stmt = $pdo->prepare("
-    SELECT a.*, p.presente, p.id as presenca_id
+    SELECT a.*, p.presente, p.observacao, p.id as presenca_id
     FROM alunos a
     INNER JOIN presencas p ON a.id = p.aluno_id
     WHERE p.aula_id = ?
@@ -117,6 +121,18 @@ require_once __DIR__ . '/../includes/header.php';
     border-color: #f44336;
 }
 
+.btn-justificada {
+    background: #fff8e1;
+    color: #f57f17;
+    border-color: #fff176;
+}
+
+.btn-justificada.active {
+    background: #ff9800;
+    color: white;
+    border-color: #ff9800;
+}
+
 .contador {
     font-size: 2rem;
     font-weight: bold;
@@ -124,7 +140,7 @@ require_once __DIR__ . '/../includes/header.php';
 </style>
 
 <div class="mb-6">
-    <a href="/instrutor/historico_chamadas.php?curso_id=<?= $aula['curso_id'] ?>" class="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4">
+    <a href="/instrutor/historico_chamadas.php?<?= $aula['turma_id'] ? 'turma_id=' . $aula['turma_id'] : 'curso_id=' . $aula['curso_id'] ?>" class="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
         </svg>
@@ -182,15 +198,29 @@ require_once __DIR__ . '/../includes/header.php';
                                 </div>
                             </div>
                             
-                            <div class="flex gap-2">
-                                <input type="hidden" name="presenca[<?= $aluno['id'] ?>]" value="<?= $aluno['presente'] ?>" class="presenca-input-<?= $aluno['id'] ?>">
-                                <button type="button" onclick="marcarPresenca(<?= $aluno['id'] ?>, true)" class="btn-presenca btn-presente presenca-btn-<?= $aluno['id'] ?>-presente <?= $aluno['presente'] ? 'active' : '' ?>">
-                                    ✓ Presente
+                            <div class="flex items-center gap-2">
+                                <button type="button" onclick="toggleObs(<?= $aluno['id'] ?>)" class="<?= !empty($aluno['observacao']) ? 'text-yellow-600' : 'text-gray-400' ?> hover:text-yellow-600 transition" title="Observacao">
+                                    <svg class="w-5 h-5 obs-icon-<?= $aluno['id'] ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24" <?= !empty($aluno['observacao']) ? 'style="color:#d97706"' : '' ?>>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+                                    </svg>
                                 </button>
-                                <button type="button" onclick="marcarPresenca(<?= $aluno['id'] ?>, false)" class="btn-presenca btn-falta presenca-btn-<?= $aluno['id'] ?>-falta <?= !$aluno['presente'] ? 'active' : '' ?>">
-                                    ✗ Falta
+                                <input type="hidden" name="presenca[<?= $aluno['id'] ?>]" value="<?= $aluno['presente'] ?>" class="presenca-input-<?= $aluno['id'] ?>">
+                                <button type="button" onclick="marcarPresenca(<?= $aluno['id'] ?>, 1)" class="btn-presenca btn-presente presenca-btn-<?= $aluno['id'] ?>-1 <?= $aluno['presente'] == 1 ? 'active' : '' ?>">
+                                    Presente
+                                </button>
+                                <button type="button" onclick="marcarPresenca(<?= $aluno['id'] ?>, 2)" class="btn-presenca btn-justificada presenca-btn-<?= $aluno['id'] ?>-2 <?= $aluno['presente'] == 2 ? 'active' : '' ?>">
+                                    Justificada
+                                </button>
+                                <button type="button" onclick="marcarPresenca(<?= $aluno['id'] ?>, 0)" class="btn-presenca btn-falta presenca-btn-<?= $aluno['id'] ?>-0 <?= $aluno['presente'] == 0 ? 'active' : '' ?>">
+                                    Falta
                                 </button>
                             </div>
+                        </div>
+                        <div id="obs-<?= $aluno['id'] ?>" class="<?= !empty($aluno['observacao']) ? '' : 'hidden' ?> mt-3 ml-12">
+                            <input type="text" name="observacao[<?= $aluno['id'] ?>]" value="<?= htmlspecialchars($aluno['observacao'] ?? '') ?>"
+                                   placeholder="Ex: Justificou ausencia, chegou atrasado..."
+                                   class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                                   oninput="atualizarIconeObs(<?= $aluno['id'] ?>, this.value)">
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -206,7 +236,12 @@ require_once __DIR__ . '/../includes/header.php';
                         <p class="text-sm text-green-700 mb-1">Presentes</p>
                         <p class="contador text-green-600" id="totalPresentes">0</p>
                     </div>
-                    
+
+                    <div class="text-center p-4 bg-yellow-50 rounded-lg">
+                        <p class="text-sm text-yellow-700 mb-1">Justificadas</p>
+                        <p class="contador text-yellow-600" id="totalJustificadas">0</p>
+                    </div>
+
                     <div class="text-center p-4 bg-red-50 rounded-lg">
                         <p class="text-sm text-red-700 mb-1">Faltas</p>
                         <p class="contador text-red-600" id="totalFaltas">0</p>
@@ -227,44 +262,65 @@ require_once __DIR__ . '/../includes/header.php';
 </form>
 
 <script>
+function toggleObs(alunoId) {
+    const div = document.getElementById('obs-' + alunoId);
+    div.classList.toggle('hidden');
+    if (!div.classList.contains('hidden')) {
+        div.querySelector('input').focus();
+    }
+}
+
+function atualizarIconeObs(alunoId, valor) {
+    const icon = document.querySelector('.obs-icon-' + alunoId);
+    if (valor.trim()) {
+        icon.style.color = '#d97706';
+        icon.closest('button').classList.add('text-yellow-600');
+        icon.closest('button').classList.remove('text-gray-400');
+    } else {
+        icon.style.color = '';
+        icon.closest('button').classList.remove('text-yellow-600');
+        icon.closest('button').classList.add('text-gray-400');
+    }
+}
+
+function marcarTodos(presente) {
+    <?php foreach ($alunos as $aluno): ?>
+        marcarPresenca(<?= $aluno['id'] ?>, presente);
+    <?php endforeach; ?>
+}
+
 const presencas = {};
 
 <?php foreach ($alunos as $aluno): ?>
-presencas[<?= $aluno['id'] ?>] = <?= $aluno['presente'] ? 'true' : 'false' ?>;
+presencas[<?= $aluno['id'] ?>] = <?= (int)$aluno['presente'] ?>;
 <?php endforeach; ?>
 
-function marcarPresenca(alunoId, presente) {
-    presencas[alunoId] = presente;
-    
-    document.querySelector(`.presenca-input-${alunoId}`).value = presente ? '1' : '0';
-    
-    const btnPresente = document.querySelector(`.presenca-btn-${alunoId}-presente`);
-    const btnFalta = document.querySelector(`.presenca-btn-${alunoId}-falta`);
-    
-    if (presente) {
-        btnPresente.classList.add('active');
-        btnFalta.classList.remove('active');
-    } else {
-        btnFalta.classList.add('active');
-        btnPresente.classList.remove('active');
-    }
-    
+function marcarPresenca(alunoId, valor) {
+    presencas[alunoId] = valor;
+    document.querySelector(`.presenca-input-${alunoId}`).value = valor;
+
+    [0, 1, 2].forEach(v => {
+        const btn = document.querySelector(`.presenca-btn-${alunoId}-${v}`);
+        if (btn) btn.classList.toggle('active', v === valor);
+    });
+
     atualizarContadores();
 }
 
 function atualizarContadores() {
     let presentes = 0;
+    let justificadas = 0;
     let faltas = 0;
-    
+
     for (let alunoId in presencas) {
-        if (presencas[alunoId]) {
-            presentes++;
-        } else {
-            faltas++;
-        }
+        const v = presencas[alunoId];
+        if (v === 1) presentes++;
+        else if (v === 2) justificadas++;
+        else faltas++;
     }
-    
+
     document.getElementById('totalPresentes').textContent = presentes;
+    document.getElementById('totalJustificadas').textContent = justificadas;
     document.getElementById('totalFaltas').textContent = faltas;
 }
 

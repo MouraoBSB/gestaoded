@@ -15,34 +15,21 @@ $pdo = getConnection();
 $instrutorId = getUserId();
 $userType = getUserType();
 
-if ($userType === 'instrutor') {
-    $cursos = $pdo->prepare("
-        SELECT c.id, c.nome, c.ano, c.capa,
-               COUNT(DISTINCT a.id) as total_aulas,
-               COUNT(DISTINCT m.aluno_id) as total_alunos
-        FROM cursos c
-        LEFT JOIN aulas a ON c.id = a.curso_id
-        LEFT JOIN matriculas m ON c.id = m.curso_id
-        WHERE c.instrutor_id = ? AND c.ativo = 1
-        GROUP BY c.id
-        ORDER BY c.ano DESC, c.nome
-    ");
-    $cursos->execute([$instrutorId]);
-} else {
-    $cursos = $pdo->query("
-        SELECT c.id, c.nome, c.ano, c.capa,
-               COUNT(DISTINCT a.id) as total_aulas,
-               COUNT(DISTINCT m.aluno_id) as total_alunos
-        FROM cursos c
-        LEFT JOIN aulas a ON c.id = a.curso_id
-        LEFT JOIN matriculas m ON c.id = m.curso_id
-        WHERE c.ativo = 1
-        GROUP BY c.id
-        ORDER BY c.ano DESC, c.nome
-    ");
-}
-
-$cursos = $cursos->fetchAll();
+// Buscar turmas ativas (instrutor ve todas para consulta, so edita as suas)
+$stmtTurmas = $pdo->prepare("
+    SELECT t.id as turma_id, c.id, c.nome, t.ano, c.capa, t.data_inicio, t.data_fim,
+           COUNT(DISTINCT a.id) as total_aulas,
+           COUNT(DISTINCT m.aluno_id) as total_alunos
+    FROM turmas t
+    INNER JOIN cursos c ON t.curso_id = c.id
+    LEFT JOIN aulas a ON t.id = a.turma_id
+    LEFT JOIN matriculas m ON t.id = m.turma_id
+    WHERE t.status = 'ativa' AND c.ativo = 1
+    GROUP BY t.id, c.id, c.nome, t.ano, c.capa, t.data_inicio, t.data_fim
+    ORDER BY t.ano DESC, c.nome
+");
+$stmtTurmas->execute();
+$cursos = $stmtTurmas->fetchAll();
 
 $pageTitle = 'Selecionar Curso - Histórico';
 require_once __DIR__ . '/../includes/header.php';
@@ -63,7 +50,7 @@ require_once __DIR__ . '/../includes/header.php';
 <?php else: ?>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <?php foreach ($cursos as $curso): ?>
-            <a href="/instrutor/historico_chamadas.php?curso_id=<?= $curso['id'] ?>" class="block bg-white rounded-lg shadow-md hover:shadow-xl transition overflow-hidden group">
+            <a href="/instrutor/historico_chamadas.php?turma_id=<?= $curso['turma_id'] ?>" class="block bg-white rounded-lg shadow-md hover:shadow-xl transition overflow-hidden group">
                 <?php if ($curso['capa']): ?>
                     <div class="h-48 overflow-hidden">
                         <img src="/assets/uploads/<?= htmlspecialchars($curso['capa']) ?>" alt="Capa" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
@@ -80,7 +67,15 @@ require_once __DIR__ . '/../includes/header.php';
                     <h3 class="text-xl font-bold text-gray-800 mb-2 group-hover:text-indigo-600 transition">
                         <?= htmlspecialchars($curso['nome']) ?>
                     </h3>
-                    <p class="text-gray-600 mb-4">Ano: <?= $curso['ano'] ?></p>
+                    <p class="text-gray-600 mb-1">Ano: <?= $curso['ano'] ?></p>
+                    <?php if ($curso['data_inicio']): ?>
+                        <p class="text-xs text-gray-500 mb-3">
+                            <?= date('d/m/Y', strtotime($curso['data_inicio'])) ?>
+                            <?= $curso['data_fim'] ? ' - ' . date('d/m/Y', strtotime($curso['data_fim'])) : '' ?>
+                        </p>
+                    <?php else: ?>
+                        <p class="mb-3"></p>
+                    <?php endif; ?>
                     
                     <div class="flex items-center justify-between text-sm text-gray-600">
                         <div class="flex items-center gap-2">

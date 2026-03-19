@@ -23,7 +23,7 @@ $sql = "
         c.nome as curso_nome,
         c.ano,
         COUNT(DISTINCT aulas.id) as total_aulas,
-        SUM(CASE WHEN p.presente = 1 THEN 1 ELSE 0 END) as total_presencas,
+        SUM(CASE WHEN p.presente IN (1,2) THEN 1 ELSE 0 END) as total_presencas,
         co.aprovado,
         co.ano_conclusao
     FROM matriculas m

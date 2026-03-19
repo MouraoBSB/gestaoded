@@ -14,25 +14,34 @@ requireRole(['gestor', 'instrutor']);
 $pdo = getConnection();
 $instrutorId = getUserId();
 
-$meusCursos = $pdo->prepare("SELECT COUNT(*) FROM cursos WHERE instrutor_id = ? AND ativo = 1");
+$meusCursos = $pdo->prepare("
+    SELECT COUNT(DISTINCT t.id) FROM turmas t
+    INNER JOIN cursos c ON t.curso_id = c.id
+    INNER JOIN turma_instrutores ti ON t.id = ti.turma_id
+    WHERE ti.instrutor_id = ? AND t.status = 'ativa' AND c.ativo = 1
+");
 $meusCursos->execute([$instrutorId]);
 $totalMeusCursos = $meusCursos->fetchColumn();
 
 $minhasAulas = $pdo->prepare("
     SELECT COUNT(*) FROM aulas a
-    INNER JOIN cursos c ON a.curso_id = c.id
-    WHERE c.instrutor_id = ? AND c.ativo = 1
+    INNER JOIN turmas t ON a.turma_id = t.id
+    INNER JOIN turma_instrutores ti ON t.id = ti.turma_id
+    WHERE ti.instrutor_id = ? AND t.status = 'ativa'
 ");
 $minhasAulas->execute([$instrutorId]);
 $totalMinhasAulas = $minhasAulas->fetchColumn();
 
 $cursosLista = $pdo->prepare("
-    SELECT c.id, c.nome, c.ano, COUNT(DISTINCT m.aluno_id) as total_alunos
-    FROM cursos c
-    LEFT JOIN matriculas m ON c.id = m.curso_id
-    WHERE c.instrutor_id = ? AND c.ativo = 1
-    GROUP BY c.id, c.nome, c.ano
-    ORDER BY c.ano DESC, c.nome
+    SELECT t.id as turma_id, c.id, c.nome, t.ano, t.data_inicio, t.data_fim,
+           COUNT(DISTINCT m.aluno_id) as total_alunos
+    FROM turmas t
+    INNER JOIN cursos c ON t.curso_id = c.id
+    INNER JOIN turma_instrutores ti ON t.id = ti.turma_id
+    LEFT JOIN matriculas m ON t.id = m.turma_id
+    WHERE ti.instrutor_id = ? AND t.status = 'ativa' AND c.ativo = 1
+    GROUP BY t.id, c.id, c.nome, t.ano, t.data_inicio, t.data_fim
+    ORDER BY t.ano DESC, c.nome
 ");
 $cursosLista->execute([$instrutorId]);
 $cursos = $cursosLista->fetchAll();
@@ -73,18 +82,32 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
     <h2 class="text-xl font-bold text-gray-800 mb-4">Ações Rápidas</h2>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <a href="/instrutor/nova_chamada.php" class="block bg-blue-50 hover:bg-blue-100 p-4 rounded-lg transition">
-            <h3 class="font-semibold text-blue-800">Registrar Chamada</h3>
-            <p class="text-sm text-gray-600">Fazer chamada e registrar presença dos alunos</p>
-        </a>
-        <a href="/instrutor/selecionar_curso_historico.php" class="block bg-indigo-50 hover:bg-indigo-100 p-4 rounded-lg transition">
-            <h3 class="font-semibold text-indigo-800">Histórico de Chamadas</h3>
-            <p class="text-sm text-gray-600">Ver chamadas e frequência dos cursos</p>
-        </a>
-        <a href="/instrutor/frequencia_alunos.php" class="block bg-cyan-50 hover:bg-cyan-100 p-4 rounded-lg transition">
-            <h3 class="font-semibold text-cyan-800">Frequência dos Alunos</h3>
-            <p class="text-sm text-gray-600">Ver frequência individual de cada aluno</p>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="rounded-lg overflow-hidden border border-blue-200">
+            <a href="/instrutor/nova_chamada.php" class="block bg-blue-50 hover:bg-blue-100 p-4 transition">
+                <h3 class="font-semibold text-blue-800">Registrar Chamada</h3>
+                <p class="text-sm text-gray-600">Fazer chamada e registrar presença dos alunos</p>
+            </a>
+            <div class="border-t border-blue-200">
+                <a href="/instrutor/selecionar_curso_historico.php" class="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-100 transition" style="background-color: rgba(59, 130, 246, 0.05);">
+                    <svg class="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-sm font-medium text-blue-700">Histórico de Chamadas</span>
+                    <span class="text-xs text-gray-500">- Por curso/turma</span>
+                </a>
+                <a href="/instrutor/frequencia_alunos.php" class="flex items-center gap-2 px-4 py-2.5 hover:bg-blue-100 transition border-t border-blue-100" style="background-color: rgba(59, 130, 246, 0.05);">
+                    <svg class="w-4 h-4 flex-shrink-0 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span class="text-sm font-medium text-blue-700">Frequência dos Alunos</span>
+                    <span class="text-xs text-gray-500">- Individual</span>
+                </a>
+            </div>
+        </div>
+        <a href="/instrutor/alunos.php" class="block bg-green-50 hover:bg-green-100 p-4 rounded-lg transition">
+            <h3 class="font-semibold text-green-800">Meus Alunos</h3>
+            <p class="text-sm text-gray-600">Ver e editar dados dos alunos das suas turmas</p>
         </a>
     </div>
 </div>
@@ -98,14 +121,20 @@ require_once __DIR__ . '/../includes/header.php';
             <?php foreach ($cursos as $curso): ?>
                 <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
                     <h3 class="font-semibold text-gray-800 mb-2"><?= htmlspecialchars($curso['nome']) ?></h3>
-                    <p class="text-sm text-gray-600 mb-3">Ano: <?= $curso['ano'] ?></p>
+                    <p class="text-sm text-gray-600 mb-1">Ano: <?= $curso['ano'] ?></p>
+                    <?php if ($curso['data_inicio']): ?>
+                        <p class="text-xs text-gray-500 mb-1">
+                            <?= date('d/m/Y', strtotime($curso['data_inicio'])) ?>
+                            <?= $curso['data_fim'] ? ' - ' . date('d/m/Y', strtotime($curso['data_fim'])) : '' ?>
+                        </p>
+                    <?php endif; ?>
                     <p class="text-sm text-gray-600 mb-4">Alunos: <?= $curso['total_alunos'] ?></p>
                     <div class="grid grid-cols-2 gap-2">
-                        <a href="/instrutor/historico_chamadas.php?curso_id=<?= $curso['id'] ?>" 
+                        <a href="/instrutor/historico_chamadas.php?turma_id=<?= $curso['turma_id'] ?>"
                             class="bg-indigo-600 hover:bg-indigo-700 text-white text-center py-2 rounded-lg transition text-sm">
                             Histórico
                         </a>
-                        <a href="/instrutor/nova_chamada.php?curso_id=<?= $curso['id'] ?>" 
+                        <a href="/instrutor/registrar_chamada.php?turma_id=<?= $curso['turma_id'] ?>"
                             class="bg-blue-600 hover:bg-blue-700 text-white text-center py-2 rounded-lg transition text-sm">
                             Nova Chamada
                         </a>

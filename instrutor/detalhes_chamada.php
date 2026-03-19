@@ -20,7 +20,7 @@ if (!$aulaId) {
 }
 
 $stmt = $pdo->prepare("
-    SELECT a.*, c.nome as curso_nome, c.ano as curso_ano, c.id as curso_id
+    SELECT a.*, c.nome as curso_nome, c.ano as curso_ano, c.id as curso_id, a.turma_id
     FROM aulas a
     INNER JOIN cursos c ON a.curso_id = c.id
     WHERE a.id = ?
@@ -34,7 +34,7 @@ if (!$aula) {
 }
 
 $stmt = $pdo->prepare("
-    SELECT a.*, p.presente, p.id as presenca_id
+    SELECT a.*, p.presente, p.observacao, p.id as presenca_id
     FROM alunos a
     INNER JOIN presencas p ON a.id = p.aluno_id
     WHERE p.aula_id = ?
@@ -45,15 +45,16 @@ $alunos = $stmt->fetchAll();
 
 $totalAlunos = count($alunos);
 $totalPresentes = count(array_filter($alunos, fn($a) => $a['presente'] == 1));
-$totalFaltas = $totalAlunos - $totalPresentes;
-$frequencia = $totalAlunos > 0 ? round(($totalPresentes / $totalAlunos) * 100) : 0;
+$totalJustificadas = count(array_filter($alunos, fn($a) => $a['presente'] == 2));
+$totalFaltas = $totalAlunos - $totalPresentes - $totalJustificadas;
+$frequencia = $totalAlunos > 0 ? round((($totalPresentes + $totalJustificadas) / $totalAlunos) * 100) : 0;
 
 $pageTitle = 'Detalhes da Chamada - ' . htmlspecialchars($aula['curso_nome']);
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="mb-6">
-    <a href="/instrutor/historico_chamadas.php?curso_id=<?= $aula['curso_id'] ?>" class="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4">
+    <a href="/instrutor/historico_chamadas.php?<?= $aula['turma_id'] ? 'turma_id=' . $aula['turma_id'] : 'curso_id=' . $aula['curso_id'] ?>" class="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
         </svg>
@@ -146,7 +147,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="p-6">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <?php foreach ($alunos as $index => $aluno): ?>
-                <div class="border border-gray-200 rounded-lg p-4 <?= $aluno['presente'] ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200' ?>">
+                <div class="border border-gray-200 rounded-lg p-4 <?= $aluno['presente'] == 1 ? 'bg-green-50 border-green-200' : ($aluno['presente'] == 2 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200') ?>">
                     <div class="flex items-center gap-3">
                         <span class="text-gray-500 font-semibold text-lg w-8"><?= $index + 1 ?>.</span>
                         
@@ -166,17 +167,29 @@ require_once __DIR__ . '/../includes/header.php';
                         </div>
                         
                         <div>
-                            <?php if ($aluno['presente']): ?>
+                            <?php if ($aluno['presente'] == 1): ?>
                                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-600 text-white">
-                                    ✓ Presente
+                                    Presente
+                                </span>
+                            <?php elseif ($aluno['presente'] == 2): ?>
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-500 text-white">
+                                    Justificada
                                 </span>
                             <?php else: ?>
                                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-600 text-white">
-                                    ✗ Falta
+                                    Falta
                                 </span>
                             <?php endif; ?>
                         </div>
                     </div>
+                    <?php if (!empty($aluno['observacao'])): ?>
+                        <div class="mt-2 ml-11 flex items-start gap-2 text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                            <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+                            </svg>
+                            <span><?= htmlspecialchars($aluno['observacao']) ?></span>
+                        </div>
+                    <?php endif; ?>
                 </div>
             <?php endforeach; ?>
         </div>

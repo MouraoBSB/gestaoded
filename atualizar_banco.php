@@ -20,79 +20,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['executar'])) {
         $tabelaExiste = $stmt->fetch();
         
         if ($tabelaExiste) {
-            // Verificar se tem a coluna 'status'
-            $stmt = $pdo->query("DESCRIBE conclusoes");
-            $colunas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            $temStatus = false;
-            $temAprovado = false;
-            
-            foreach ($colunas as $col) {
-                if ($col['Field'] === 'status') {
-                    $temStatus = true;
-                }
-                if ($col['Field'] === 'aprovado') {
-                    $temAprovado = true;
-                }
-            }
-            
-            if (!$temStatus && $temAprovado) {
-                // Remover coluna aprovado e adicionar status
-                $pdo->exec("ALTER TABLE conclusoes DROP COLUMN aprovado");
-                $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Coluna "aprovado" removida'];
-                
-                $pdo->exec("ALTER TABLE conclusoes ADD COLUMN status ENUM('aprovado', 'reprovado') NOT NULL AFTER curso_id");
-                $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Coluna "status" adicionada'];
-                
-                // Remover coluna ano_conclusao se existir
-                $pdo->exec("ALTER TABLE conclusoes DROP COLUMN IF EXISTS ano_conclusao");
-                $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Coluna "ano_conclusao" removida'];
-                
-                // Adicionar coluna atualizado_em se não existir
-                $temAtualizado = false;
-                foreach ($colunas as $col) {
-                    if ($col['Field'] === 'atualizado_em') {
-                        $temAtualizado = true;
-                    }
-                }
-                
-                // Verificar se tem criado_em
-                $temCriado = false;
-                foreach ($colunas as $col) {
-                    if ($col['Field'] === 'criado_em') {
-                        $temCriado = true;
-                    }
-                }
-                
-                if (!$temCriado) {
-                    $pdo->exec("ALTER TABLE conclusoes ADD COLUMN criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER observacoes");
-                    $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Coluna "criado_em" adicionada'];
-                }
-                
-                if (!$temAtualizado) {
-                    $pdo->exec("ALTER TABLE conclusoes ADD COLUMN atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER criado_em");
-                    $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Coluna "atualizado_em" adicionada'];
-                }
-                
-                $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Estrutura da tabela conclusoes corrigida!'];
-            } elseif ($temStatus) {
-                $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Tabela conclusoes já está com a estrutura correta!'];
-            } else {
-                $mensagens[] = ['tipo' => 'error', 'texto' => '✗ Estrutura da tabela não reconhecida. Contate o desenvolvedor.'];
-            }
+            $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Tabela conclusoes já existe!'];
         } else {
-            // Criar tabela do zero
+            // Criar tabela do zero com estrutura correta
             $pdo->exec("
                 CREATE TABLE conclusoes (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     aluno_id INT NOT NULL,
                     curso_id INT NOT NULL,
-                    status ENUM('aprovado', 'reprovado') NOT NULL,
+                    aprovado TINYINT(1) NOT NULL,
+                    ano_conclusao INT NOT NULL,
                     observacoes TEXT,
-                    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    UNIQUE KEY unique_aluno_curso (aluno_id, curso_id),
+                    registrado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (aluno_id) REFERENCES alunos(id) ON DELETE CASCADE,
-                    FOREIGN KEY (curso_id) REFERENCES cursos(id) ON DELETE CASCADE
+                    FOREIGN KEY (curso_id) REFERENCES cursos(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_conclusao (aluno_id, curso_id),
+                    INDEX idx_aluno (aluno_id),
+                    INDEX idx_curso (curso_id),
+                    INDEX idx_ano (ano_conclusao)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
             $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Tabela conclusoes criada com sucesso!'];
@@ -138,6 +83,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['executar'])) {
             $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Tabela tokens_recuperacao criada com sucesso!'];
         } else {
             $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Tabela tokens_recuperacao já existe!'];
+        }
+        
+        // Adicionar coluna remember_token na tabela usuarios
+        $stmt = $pdo->query("SHOW COLUMNS FROM usuarios LIKE 'remember_token'");
+        $colunaRememberTokenExiste = $stmt->fetch();
+        
+        if (!$colunaRememberTokenExiste) {
+            $pdo->exec("ALTER TABLE usuarios ADD COLUMN remember_token VARCHAR(64) NULL DEFAULT NULL AFTER senha");
+            $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Coluna remember_token adicionada na tabela usuarios!'];
+        } else {
+            $mensagens[] = ['tipo' => 'success', 'texto' => '✓ Coluna remember_token já existe na tabela usuarios!'];
         }
         
         // Criar tabela curso_instrutores para relacionamento N:N
@@ -210,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['executar'])) {
                     <?php endforeach; ?>
                     
                     <div class="mt-6 flex gap-3">
-                        <a href="/index.php" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition">
+                        <a href="/gestao.php" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition">
                             Ir para o Sistema
                         </a>
                         <a href="/atualizar_banco.php" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold transition">

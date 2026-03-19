@@ -76,7 +76,7 @@ $stmt->execute([$alunoId, $cursoId]);
 $aulas = $stmt->fetchAll();
 
 $totalAulas = count($aulas);
-$totalPresencas = count(array_filter($aulas, fn($a) => $a['presente'] == 1));
+$totalPresencas = count(array_filter($aulas, fn($a) => in_array($a['presente'], [1, 2])));
 $totalFaltas = $totalAulas - $totalPresencas;
 $frequencia = $totalAulas > 0 ? round(($totalPresencas / $totalAulas) * 100) : 0;
 
@@ -135,7 +135,7 @@ require_once __DIR__ . '/../includes/header.php';
             <?php else: ?>
                 <div class="space-y-3">
                     <?php foreach ($aulas as $aula): ?>
-                        <div class="border border-gray-200 rounded-lg p-4 <?= $aula['presente'] ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200' ?>">
+                        <div class="border border-gray-200 rounded-lg p-4 <?= $aula['presente'] == 1 ? 'bg-green-50 border-green-200' : ($aula['presente'] == 2 ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200') ?>">
                             <div class="flex items-center justify-between">
                                 <div class="flex-1">
                                     <p class="font-semibold text-gray-900"><?= formatarData($aula['data_aula']) ?></p>

@@ -14,22 +14,40 @@ requireRole(['gestor', 'diretor']);
 $pdo = getConnection();
 
 $alunos = $pdo->query("SELECT id, nome, foto FROM alunos WHERE ativo = 1 ORDER BY nome")->fetchAll();
-$cursos = $pdo->query("SELECT id, nome, ano, capa FROM cursos WHERE ativo = 1 ORDER BY ano DESC, nome")->fetchAll();
 
+// Buscar turmas ativas com info do curso
+$turmas = $pdo->query("
+    SELECT t.id, t.ano, t.semestre, t.vagas, t.data_inicio, t.data_fim,
+           c.nome as curso_nome, c.capa as curso_capa, c.tipo_periodo,
+           t.curso_id
+    FROM turmas t
+    INNER JOIN cursos c ON t.curso_id = c.id
+    WHERE t.status = 'ativa' AND c.ativo = 1
+    ORDER BY c.nome, t.ano DESC
+")->fetchAll();
+
+// Buscar matriculas existentes (por turma)
 $matriculasExistentes = $pdo->query("
-    SELECT aluno_id, curso_id 
+    SELECT m.aluno_id, m.turma_id
     FROM matriculas m
     INNER JOIN alunos a ON m.aluno_id = a.id
-    INNER JOIN cursos c ON m.curso_id = c.id
-    WHERE a.ativo = 1 AND c.ativo = 1
-")->fetchAll(PDO::FETCH_KEY_PAIR);
+    INNER JOIN turmas t ON m.turma_id = t.id
+    WHERE a.ativo = 1 AND t.status = 'ativa'
+")->fetchAll();
 
-$alunosMatriculados = array_keys($matriculasExistentes);
-$alunosSemCurso = array_filter($alunos, function($aluno) use ($alunosMatriculados) {
-    return !in_array($aluno['id'], $alunosMatriculados);
+// Montar mapa aluno -> turmas
+$alunosComTurma = [];
+$matriculasPorTurma = [];
+foreach ($matriculasExistentes as $mat) {
+    $alunosComTurma[$mat['aluno_id']] = true;
+    $matriculasPorTurma[$mat['turma_id']][] = $mat['aluno_id'];
+}
+
+$alunosSemCurso = array_filter($alunos, function($aluno) use ($alunosComTurma) {
+    return !isset($alunosComTurma[$aluno['id']]);
 });
 
-$pageTitle = 'Vincular Alunos aos Cursos';
+$pageTitle = 'Vincular Alunos às Turmas';
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -39,6 +57,19 @@ require_once __DIR__ . '/../includes/header.php';
     gap: 1.5rem;
     overflow-x: auto;
     padding-bottom: 1rem;
+    position: relative;
+}
+
+.kanban-column-fixa {
+    position: sticky;
+    left: 0;
+    z-index: 20;
+    flex-shrink: 0;
+    min-width: 300px;
+    max-width: 300px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 4px 0 12px rgba(0,0,0,0.15);
 }
 
 .kanban-column {
@@ -158,8 +189,8 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="mb-6">
     <div class="flex justify-between items-start">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Vincular Alunos aos Cursos</h1>
-            <p class="text-gray-600 mt-2">Arraste os alunos para os cursos desejados</p>
+            <h1 class="text-3xl font-bold text-gray-800">Vincular Alunos às Turmas</h1>
+            <p class="text-gray-600 mt-2">Arraste os alunos para as turmas desejadas</p>
         </div>
         <a href="/diretor/matriculas.php" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition flex items-center gap-2">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -172,7 +203,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="kanban-container">
     <!-- Coluna de Alunos Sem Curso -->
-    <div class="kanban-column">
+    <div class="kanban-column kanban-column-fixa">
         <div class="kanban-header bg-gradient-to-r from-gray-600 to-gray-700 text-white">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -184,7 +215,22 @@ require_once __DIR__ . '/../includes/header.php';
                 <span class="badge-count"><?= count($alunosSemCurso) ?></span>
             </div>
         </div>
-        <div class="kanban-body" data-curso-id="0">
+        <div class="px-3 py-2 border-b border-gray-200">
+            <div class="relative">
+                <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+                <input type="text" id="busca-alunos" placeholder="Buscar aluno..."
+                       class="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                       oninput="filtrarAlunos(this.value)">
+                <button type="button" id="btn-limpar-busca" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" onclick="limparBusca()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="kanban-body" data-turma-id="0" data-curso-id="0">
             <?php if (empty($alunosSemCurso)): ?>
                 <div class="empty-state">
                     <svg class="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -214,18 +260,25 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
-    <!-- Colunas de Cursos -->
-    <?php foreach ($cursos as $curso): ?>
-        <?php
-        $alunosDoCurso = array_filter($alunos, function($aluno) use ($matriculasExistentes, $curso) {
-            return isset($matriculasExistentes[$aluno['id']]) && $matriculasExistentes[$aluno['id']] == $curso['id'];
-        });
-        ?>
+    <!-- Colunas de Turmas -->
+    <?php foreach ($turmas as $turma):
+        $alunosDaTurma = [];
+        if (isset($matriculasPorTurma[$turma['id']])) {
+            $idsMatriculados = $matriculasPorTurma[$turma['id']];
+            $alunosDaTurma = array_filter($alunos, function($aluno) use ($idsMatriculados) {
+                return in_array($aluno['id'], $idsMatriculados);
+            });
+        }
+        $periodo = $turma['ano'];
+        if ($turma['semestre']) {
+            $periodo .= '/' . $turma['semestre'] . 'º Sem';
+        }
+    ?>
         <div class="kanban-column">
             <div class="kanban-header bg-gradient-to-r from-purple-500 to-pink-500 text-white">
                 <div class="flex items-start gap-3">
-                    <?php if ($curso['capa']): ?>
-                        <img src="/assets/uploads/<?= htmlspecialchars($curso['capa']) ?>" alt="Capa" class="curso-capa">
+                    <?php if ($turma['curso_capa']): ?>
+                        <img src="/assets/uploads/<?= htmlspecialchars($turma['curso_capa']) ?>" alt="Capa" class="curso-capa">
                     <?php else: ?>
                         <div class="curso-capa-placeholder bg-white bg-opacity-20">
                             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -234,18 +287,19 @@ require_once __DIR__ . '/../includes/header.php';
                         </div>
                     <?php endif; ?>
                     <div class="flex-1">
-                        <a href="/diretor/curso_detalhes.php?id=<?= $curso['id'] ?>" class="hover:underline">
-                            <h3 class="font-bold text-lg"><?= htmlspecialchars($curso['nome']) ?></h3>
-                        </a>
-                        <p class="text-sm opacity-90">Ano: <?= $curso['ano'] ?></p>
-                        <div class="mt-2">
-                            <span class="badge-count"><?= count($alunosDoCurso) ?> alunos</span>
+                        <h3 class="font-bold text-lg"><?= htmlspecialchars($turma['curso_nome']) ?></h3>
+                        <p class="text-sm opacity-90"><?= $periodo ?></p>
+                        <?php if ($turma['data_inicio']): ?>
+                            <p class="text-xs opacity-75"><?= date('d/m/Y', strtotime($turma['data_inicio'])) ?> - <?= $turma['data_fim'] ? date('d/m/Y', strtotime($turma['data_fim'])) : '...' ?></p>
+                        <?php endif; ?>
+                        <div class="mt-2 flex items-center gap-2">
+                            <span class="badge-count"><?= count($alunosDaTurma) ?>/<?= $turma['vagas'] ?></span>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="kanban-body" data-curso-id="<?= $curso['id'] ?>">
-                <?php if (empty($alunosDoCurso)): ?>
+            <div class="kanban-body" data-turma-id="<?= $turma['id'] ?>" data-curso-id="<?= $turma['curso_id'] ?>">
+                <?php if (empty($alunosDaTurma)): ?>
                     <div class="empty-state">
                         <svg class="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
@@ -253,7 +307,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <p class="text-sm">Arraste alunos para cá</p>
                     </div>
                 <?php else: ?>
-                    <?php foreach ($alunosDoCurso as $aluno): ?>
+                    <?php foreach ($alunosDaTurma as $aluno): ?>
                         <div class="aluno-card" draggable="true" data-aluno-id="<?= $aluno['id'] ?>">
                             <?php if ($aluno['foto']): ?>
                                 <img src="/assets/uploads/<?= htmlspecialchars($aluno['foto']) ?>" alt="Foto" class="aluno-avatar">
@@ -277,6 +331,27 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <script>
+function filtrarAlunos(termo) {
+    const container = document.querySelector('.kanban-body[data-turma-id="0"]');
+    const cards = container.querySelectorAll('.aluno-card');
+    const btnLimpar = document.getElementById('btn-limpar-busca');
+    const termoLower = termo.toLowerCase().trim();
+
+    btnLimpar.classList.toggle('hidden', termoLower === '');
+
+    cards.forEach(card => {
+        const nome = card.querySelector('.font-medium').textContent.toLowerCase();
+        card.style.display = nome.includes(termoLower) ? '' : 'none';
+    });
+}
+
+function limparBusca() {
+    const input = document.getElementById('busca-alunos');
+    input.value = '';
+    filtrarAlunos('');
+    input.focus();
+}
+
 let draggedElement = null;
 let originalParent = null;
 
@@ -332,13 +407,15 @@ function handleDrop(e) {
     
     if (draggedElement && this !== originalParent) {
         const alunoId = draggedElement.dataset.alunoId;
-        const cursoId = this.dataset.cursoId;
-        const cursoAnteriorId = originalParent.dataset.cursoId;
-        
+        const turmaId = this.dataset.turmaId || '0';
+        const cursoId = this.dataset.cursoId || '0';
+        const turmaAnteriorId = originalParent.dataset.turmaId || '0';
+        const cursoAnteriorId = originalParent.dataset.cursoId || '0';
+
         this.appendChild(draggedElement);
         atualizarContadores();
-        
-        salvarMatricula(alunoId, cursoId, cursoAnteriorId);
+
+        salvarMatricula(alunoId, turmaId, cursoId, turmaAnteriorId, cursoAnteriorId);
     }
     
     return false;
@@ -372,7 +449,7 @@ function atualizarContadores() {
     });
 }
 
-function salvarMatricula(alunoId, novoCursoId, cursoAnteriorId) {
+function salvarMatricula(alunoId, turmaId, cursoId, turmaAnteriorId, cursoAnteriorId) {
     fetch('/diretor/api_matricula.php', {
         method: 'POST',
         headers: {
@@ -380,7 +457,9 @@ function salvarMatricula(alunoId, novoCursoId, cursoAnteriorId) {
         },
         body: JSON.stringify({
             aluno_id: alunoId,
-            curso_id: novoCursoId,
+            turma_id: turmaId,
+            curso_id: cursoId,
+            turma_anterior_id: turmaAnteriorId,
             curso_anterior_id: cursoAnteriorId
         })
     })

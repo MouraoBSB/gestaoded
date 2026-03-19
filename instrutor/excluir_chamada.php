@@ -13,6 +13,7 @@ requireRole(['instrutor', 'gestor']);
 
 $pdo = getConnection();
 $aulaId = isset($_POST['aula_id']) ? (int)$_POST['aula_id'] : 0;
+$turmaId = isset($_POST['turma_id']) ? (int)$_POST['turma_id'] : 0;
 $cursoId = isset($_POST['curso_id']) ? (int)$_POST['curso_id'] : 0;
 
 if (!$aulaId) {
@@ -38,7 +39,9 @@ try {
     setFlashMessage('Erro ao excluir chamada: ' . $e->getMessage(), 'error');
 }
 
-if ($cursoId) {
+if ($turmaId) {
+    redirect('/instrutor/historico_chamadas.php?turma_id=' . $turmaId);
+} elseif ($cursoId) {
     redirect('/instrutor/historico_chamadas.php?curso_id=' . $cursoId);
 } else {
     redirect('/instrutor/nova_chamada.php');

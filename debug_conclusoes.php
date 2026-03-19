@@ -96,7 +96,7 @@ header('Content-Type: text/html; charset=utf-8');
             <a href="/atualizar_banco.php" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold">
                 Ir para Atualização
             </a>
-            <a href="/index.php" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold">
+            <a href="/gestao.php" class="bg-gray-500 hover:bg-gray-600 text-white px-6 py-3 rounded-lg font-semibold">
                 Voltar ao Sistema
             </a>
         </div>

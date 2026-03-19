@@ -13,50 +13,70 @@ requireRole(['instrutor', 'gestor']);
 
 $pdo = getConnection();
 $instrutorId = getUserId();
+$userType = getUserType();
+$turmaId = isset($_GET['turma_id']) ? (int)$_GET['turma_id'] : 0;
 $cursoId = isset($_GET['curso_id']) ? (int)$_GET['curso_id'] : 0;
 
-if ($cursoId) {
-    $userType = getUserType();
-    
-    if ($userType === 'gestor') {
-        $stmt = $pdo->prepare("SELECT * FROM cursos WHERE id = ? AND ativo = 1");
-        $stmt->execute([$cursoId]);
-    } else {
-        $stmt = $pdo->prepare("SELECT * FROM cursos WHERE id = ? AND instrutor_id = ? AND ativo = 1");
-        $stmt->execute([$cursoId, $instrutorId]);
-    }
-    
-    $curso = $stmt->fetch();
-    
-    if (!$curso) {
-        setFlashMessage('Você não tem permissão para acessar este curso!', 'error');
+// Suporte legado: se veio curso_id, buscar turma ativa
+if (!$turmaId && $cursoId) {
+    $stmt = $pdo->prepare("SELECT id FROM turmas WHERE curso_id = ? AND status = 'ativa' ORDER BY ano DESC LIMIT 1");
+    $stmt->execute([$cursoId]);
+    $turmaId = (int)$stmt->fetchColumn();
+}
+
+$turma = null;
+$aulas = [];
+
+if ($turmaId) {
+    // Instrutor pode visualizar qualquer turma ativa
+    $stmt = $pdo->prepare("
+        SELECT t.*, c.nome as curso_nome, c.capa as curso_capa
+        FROM turmas t INNER JOIN cursos c ON t.curso_id = c.id
+        WHERE t.id = ? AND c.ativo = 1
+    ");
+    $stmt->execute([$turmaId]);
+
+    $turma = $stmt->fetch();
+
+    if (!$turma) {
+        setFlashMessage('Turma nao encontrada!', 'error');
         redirect('/instrutor/dashboard.php');
     }
-    
+
+    // Verificar se o instrutor esta vinculado a esta turma (para controle de edicao)
+    $podeEditar = ($userType === 'gestor');
+    if ($userType === 'instrutor') {
+        $stmtVinculo = $pdo->prepare("SELECT 1 FROM turma_instrutores WHERE turma_id = ? AND instrutor_id = ?");
+        $stmtVinculo->execute([$turmaId, $instrutorId]);
+        $podeEditar = (bool)$stmtVinculo->fetchColumn();
+    }
+
+    // Buscar aulas da turma (ou do curso para compatibilidade)
     $stmt = $pdo->prepare("
-        SELECT a.*, 
+        SELECT a.*,
                COUNT(DISTINCT p.aluno_id) as total_alunos,
-               SUM(CASE WHEN p.presente = 1 THEN 1 ELSE 0 END) as total_presentes,
-               SUM(CASE WHEN p.presente = 0 THEN 1 ELSE 0 END) as total_faltas
+               SUM(CASE WHEN p.presente IN (1,2) THEN 1 ELSE 0 END) as total_presentes,
+               SUM(CASE WHEN p.presente = 0 THEN 1 ELSE 0 END) as total_faltas,
+               SUM(CASE WHEN p.observacao IS NOT NULL AND p.observacao != '' THEN 1 ELSE 0 END) as total_observacoes
         FROM aulas a
         LEFT JOIN presencas p ON a.id = p.aula_id
-        WHERE a.curso_id = ?
+        WHERE (a.turma_id = ? OR (a.turma_id IS NULL AND a.curso_id = ?))
         GROUP BY a.id
         ORDER BY a.data_aula DESC, a.criado_em DESC
     ");
-    $stmt->execute([$cursoId]);
+    $stmt->execute([$turmaId, $turma['curso_id']]);
     $aulas = $stmt->fetchAll();
-} else {
-    $curso = null;
-    $aulas = [];
 }
+
+// Compatibilidade com codigo antigo que usa $curso
+$curso = $turma ? ['nome' => $turma['curso_nome'], 'ano' => $turma['ano'], 'id' => $turma['curso_id']] : null;
 
 $pageTitle = $curso ? 'Histórico de Chamadas - ' . htmlspecialchars($curso['nome']) : 'Histórico de Chamadas';
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
 <div class="mb-6">
-    <a href="<?= $curso ? '/instrutor/nova_chamada.php' : '/instrutor/dashboard.php' ?>" class="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4">
+    <a href="<?= $userType === 'gestor' ? '/gestor/selecionar_curso_historico.php' : '/instrutor/dashboard.php' ?>" class="text-blue-600 hover:text-blue-800 flex items-center gap-2 mb-4">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
         </svg>
@@ -69,9 +89,11 @@ require_once __DIR__ . '/../includes/header.php';
                 <h1 class="text-3xl font-bold text-gray-800">Histórico de Chamadas</h1>
                 <p class="text-gray-600 mt-2"><?= htmlspecialchars($curso['nome']) ?> - <?= $curso['ano'] ?></p>
             </div>
-            <a href="/instrutor/registrar_chamada.php?curso_id=<?= $cursoId ?>" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg transition font-semibold">
-                + Nova Chamada
-            </a>
+            <?php if ($podeEditar): ?>
+                <a href="/instrutor/registrar_chamada.php?turma_id=<?= $turmaId ?>" class="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg transition font-semibold">
+                    + Nova Chamada
+                </a>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 </div>
@@ -83,9 +105,11 @@ require_once __DIR__ . '/../includes/header.php';
         </svg>
         <p class="text-gray-500 text-lg mb-4">Nenhuma chamada registrada ainda</p>
         <?php if ($curso): ?>
-            <a href="/instrutor/registrar_chamada.php?curso_id=<?= $cursoId ?>" class="inline-block bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition">
-                Registrar Primeira Chamada
-            </a>
+            <?php if ($podeEditar): ?>
+                <a href="/instrutor/registrar_chamada.php?turma_id=<?= $turmaId ?>" class="inline-block bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition">
+                    Registrar Primeira Chamada
+                </a>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 <?php else: ?>
@@ -100,6 +124,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Faltas</th>
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total</th>
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Frequência</th>
+                        <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Obs</th>
                         <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Ações</th>
                     </tr>
                 </thead>
@@ -136,16 +161,30 @@ require_once __DIR__ . '/../includes/header.php';
                                 <span class="text-lg font-bold <?= $corFrequencia ?>"><?= $frequencia ?>%</span>
                             </td>
                             <td class="px-6 py-4 text-center">
+                                <?php if ($aula['total_observacoes'] > 0): ?>
+                                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800" title="<?= $aula['total_observacoes'] ?> observacao(oes)">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+                                        </svg>
+                                        <?= $aula['total_observacoes'] ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-gray-300">-</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-6 py-4 text-center">
                                 <div class="flex items-center justify-center gap-3">
                                     <a href="/instrutor/detalhes_chamada.php?aula_id=<?= $aula['id'] ?>" class="text-blue-600 hover:text-blue-800 font-medium">
                                         Ver Detalhes
                                     </a>
-                                    <a href="/instrutor/editar_chamada.php?aula_id=<?= $aula['id'] ?>" class="text-green-600 hover:text-green-800 font-medium">
-                                        Editar
-                                    </a>
-                                    <button onclick="confirmarExcluir(<?= $aula['id'] ?>)" class="text-red-600 hover:text-red-800 font-medium">
-                                        Excluir
-                                    </button>
+                                    <?php if ($podeEditar): ?>
+                                        <a href="/instrutor/editar_chamada.php?aula_id=<?= $aula['id'] ?>" class="text-green-600 hover:text-green-800 font-medium">
+                                            Editar
+                                        </a>
+                                        <button onclick="confirmarExcluir(<?= $aula['id'] ?>)" class="text-red-600 hover:text-red-800 font-medium">
+                                            Excluir
+                                        </button>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>
@@ -209,7 +248,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <form id="formExcluir" method="POST" action="/instrutor/excluir_chamada.php" class="hidden">
     <input type="hidden" name="aula_id" id="excluir_aula_id">
-    <input type="hidden" name="curso_id" value="<?= $cursoId ?>">
+    <input type="hidden" name="turma_id" value="<?= $turmaId ?>">
 </form>
 
 <script>

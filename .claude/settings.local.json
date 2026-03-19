@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -ExecutionPolicy Bypass -File deploy.ps1 -AutoHoras 1)",
+      "WebFetch(domain:portal.cursoscema.com.br)",
+      "Bash(powershell -File deploy.ps1 -AutoHoras 1)"
+    ]
+  }
+}

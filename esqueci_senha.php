@@ -13,52 +13,56 @@ $pdo = getConnection();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = sanitize($_POST['email'] ?? '');
-    
+
     if (empty($email)) {
         $erro = 'Digite seu email';
     } else {
         $stmt = $pdo->prepare("SELECT id, nome FROM usuarios WHERE email = ? AND ativo = 1");
         $stmt->execute([$email]);
         $usuario = $stmt->fetch();
-        
+
         if ($usuario) {
-            $token = bin2hex(random_bytes(32));
-            $expiracao = date('Y-m-d H:i:s', strtotime('+1 hour'));
-            
             try {
+                // Invalidar tokens anteriores do mesmo usuário
+                $stmt = $pdo->prepare("UPDATE tokens_recuperacao SET usado = 1 WHERE usuario_id = ? AND usado = 0");
+                $stmt->execute([$usuario['id']]);
+
+                // Limpar tokens expirados de todos os usuários
+                $pdo->exec("DELETE FROM tokens_recuperacao WHERE expiracao < NOW() AND usado = 1");
+
+                $token = bin2hex(random_bytes(32));
+                $expiracao = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
                 $stmt = $pdo->prepare("INSERT INTO tokens_recuperacao (usuario_id, token, expiracao) VALUES (?, ?, ?)");
                 $stmt->execute([$usuario['id'], $token, $expiracao]);
-                
-                $linkRecuperacao = 'http://' . $_SERVER['HTTP_HOST'] . '/redefinir_senha.php?token=' . $token;
-                
+
+                $protocolo = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                $linkRecuperacao = $protocolo . '://' . $_SERVER['HTTP_HOST'] . '/redefinir_senha.php?token=' . $token;
+
                 $mensagemHtml = obterTemplateEmail(
-                    '🔐 Recuperação de Senha',
+                    'Recuperação de Senha',
                     'Olá <strong>' . htmlspecialchars($usuario['nome']) . '</strong>,<br><br>' .
-                    'Recebemos uma solicitação para redefinir sua senha.<br><br>' .
+                    'Recebemos uma solicitação para redefinir sua senha no sistema CEMA.<br><br>' .
                     'Clique no botão abaixo para criar uma nova senha:<br><br>' .
-                    '<a href="' . $linkRecuperacao . '" style="display: inline-block; background-color: #8b5cf6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Redefinir Senha</a><br><br>' .
+                    '<a href="' . $linkRecuperacao . '" style="display: inline-block; background: linear-gradient(90deg, #4e4483 0%, #6e9fcb 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Redefinir Minha Senha</a><br><br>' .
                     'Ou copie e cole este link no navegador:<br>' .
-                    '<a href="' . $linkRecuperacao . '">' . $linkRecuperacao . '</a><br><br>' .
-                    '<strong>Este link expira em 1 hora.</strong><br><br>' .
-                    'Se você não solicitou esta redefinição, ignore este email.',
+                    '<a href="' . $linkRecuperacao . '" style="color: #4e4483;">' . $linkRecuperacao . '</a><br><br>' .
+                    '<strong style="color: #e79048;">Este link expira em 1 hora.</strong><br><br>' .
+                    'Se você não solicitou esta redefinição, ignore este email. Sua senha permanecerá inalterada.',
                     htmlspecialchars($usuario['nome']),
                     $linkRecuperacao
                 );
-                
-                $mensagemTexto = "Recuperação de Senha\n\nOlá {$usuario['nome']},\n\nRecebemos uma solicitação para redefinir sua senha.\n\nAcesse este link para criar uma nova senha:\n{$linkRecuperacao}\n\nEste link expira em 1 hora.\n\nSe você não solicitou esta redefinição, ignore este email.";
-                
-                try {
-                    enviarEmail($email, $usuario['nome'], 'Recuperação de Senha - Sistema de Chamada', $mensagemHtml, $mensagemTexto);
-                    $sucesso = 'Email de recuperação enviado! Verifique sua caixa de entrada.';
-                } catch (Exception $e) {
-                    $erro = 'Erro ao enviar email: ' . $e->getMessage();
-                }
+
+                $mensagemTexto = "Recuperação de Senha\n\nOlá {$usuario['nome']},\n\nRecebemos uma solicitação para redefinir sua senha no sistema CEMA.\n\nAcesse este link para criar uma nova senha:\n{$linkRecuperacao}\n\nEste link expira em 1 hora.\n\nSe você não solicitou esta redefinição, ignore este email.";
+
+                enviarEmail($email, $usuario['nome'], 'Recuperação de Senha - CEMA', $mensagemHtml, $mensagemTexto);
             } catch (Exception $e) {
-                $erro = 'Erro ao enviar email: ' . $e->getMessage();
+                error_log("Erro ao enviar email de recuperação para {$email}: " . $e->getMessage());
             }
-        } else {
-            $sucesso = 'Se o email existir em nossa base, você receberá instruções para redefinir sua senha.';
         }
+
+        // Mensagem genérica independente de o email existir ou não (segurança)
+        $sucesso = 'Se este email estiver cadastrado, você receberá as instruções para redefinir sua senha em instantes.';
     }
 }
 ?>
@@ -67,46 +71,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Esqueci Minha Senha - Sistema de Chamada</title>
+    <title>Esqueci Minha Senha - CEMA</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gradient-to-br from-purple-500 to-pink-500 min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-        <div class="text-center mb-6">
-            <h1 class="text-3xl font-bold text-gray-800 mb-2">🔐 Esqueci Minha Senha</h1>
-            <p class="text-gray-600">Digite seu email para recuperar o acesso</p>
+<body class="min-h-screen flex items-center justify-center p-4" style="background: linear-gradient(135deg, #4e4483 0%, #6e9fcb 50%, #89ab98 100%);">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+        <div class="text-center mb-8">
+            <img src="/assets/images/logo-cema.png" alt="CEMA" class="h-20 mx-auto mb-4">
+            <h1 class="text-2xl font-bold" style="color: #4e4483;">Esqueci Minha Senha</h1>
+            <p class="mt-2 text-sm" style="color: #89ab98;">Digite seu email para receber o link de recuperação</p>
         </div>
-        
+
         <?php if (isset($sucesso)): ?>
-            <div class="bg-green-100 border-2 border-green-500 text-green-800 p-4 rounded-lg mb-6">
-                <p class="font-semibold"><?= $sucesso ?></p>
+            <div class="border-2 px-4 py-4 rounded-lg mb-6" style="background-color: #f0fdf4; border-color: #89ab98; color: #166534;">
+                <div class="flex items-start gap-3">
+                    <svg class="w-6 h-6 flex-shrink-0 mt-0.5" style="color: #89ab98;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                    <div>
+                        <p class="font-semibold text-sm"><?= htmlspecialchars($sucesso) ?></p>
+                        <p class="text-xs mt-2" style="color: #6b7280;">Verifique também a pasta de spam/lixo eletrônico.</p>
+                    </div>
+                </div>
             </div>
         <?php endif; ?>
-        
+
         <?php if (isset($erro)): ?>
-            <div class="bg-red-100 border-2 border-red-500 text-red-800 p-4 rounded-lg mb-6">
-                <p class="font-semibold"><?= $erro ?></p>
+            <div class="border-2 px-4 py-3 rounded-lg mb-6" style="background-color: #e79048; border-color: #4e4483; color: white;">
+                <strong>&#10007;</strong> <?= htmlspecialchars($erro) ?>
             </div>
         <?php endif; ?>
-        
-        <form method="POST">
-            <div class="mb-6">
-                <label class="block text-gray-700 font-semibold mb-2">Email</label>
-                <input type="email" name="email" required 
-                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+
+        <?php if (!isset($sucesso)): ?>
+        <form method="POST" class="space-y-6">
+            <div>
+                <label for="email" class="block text-sm font-medium mb-2" style="color: #4e4483;">Email cadastrado</label>
+                <input type="email" id="email" name="email" required autofocus
+                       value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+                       class="w-full px-4 py-3 border-2 rounded-lg transition focus:outline-none"
+                       style="border-color: #89ab98;"
+                       onfocus="this.style.borderColor='#4e4483'; this.style.boxShadow='0 0 0 3px rgba(78,68,131,0.1)'"
+                       onblur="this.style.borderColor='#89ab98'; this.style.boxShadow='none'"
                        placeholder="seu-email@exemplo.com">
             </div>
-            
-            <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-lg transition mb-4">
+
+            <button type="submit"
+                class="w-full text-white font-semibold py-3 rounded-lg transition duration-200 transform hover:scale-105 shadow-lg"
+                style="background: linear-gradient(90deg, #4e4483 0%, #6e9fcb 100%);">
                 Enviar Link de Recuperação
             </button>
-            
-            <div class="text-center">
-                <a href="/login.php" class="text-purple-600 hover:text-purple-800 font-semibold">
-                    ← Voltar para o Login
-                </a>
-            </div>
         </form>
+        <?php endif; ?>
+
+        <div class="text-center mt-6">
+            <a href="/login.php" class="font-semibold hover:underline text-sm" style="color: #e79048;">
+                &larr; Voltar para o Login
+            </a>
+        </div>
     </div>
 </body>
 </html>

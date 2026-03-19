@@ -31,10 +31,10 @@ if (!$aluno) {
 $stmt = $pdo->prepare("
     SELECT c.id, c.nome, c.ano, c.capa, m.data_matricula,
            COUNT(DISTINCT a.id) as total_aulas,
-           SUM(CASE WHEN p.presente = 1 THEN 1 ELSE 0 END) as total_presencas,
+           SUM(CASE WHEN p.presente IN (1,2) THEN 1 ELSE 0 END) as total_presencas,
            CASE 
                WHEN COUNT(DISTINCT a.id) > 0 
-               THEN ROUND((SUM(CASE WHEN p.presente = 1 THEN 1 ELSE 0 END) / COUNT(DISTINCT a.id)) * 100)
+               THEN ROUND((SUM(CASE WHEN p.presente IN (1,2) THEN 1 ELSE 0 END) / COUNT(DISTINCT a.id)) * 100)
                ELSE 0
            END as frequencia,
            co.status as status_conclusao,
@@ -119,9 +119,9 @@ require_once __DIR__ . '/includes/header.php';
             
             <div class="flex gap-2">
                 <?php if (getUserType() === 'gestor' || getUserType() === 'diretor'): ?>
-                    <a href="/gestor/alunos.php?editar=<?= $aluno['id'] ?>" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
+                    <button onclick="abrirModalEditar()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
                         Editar Perfil
-                    </a>
+                    </button>
                 <?php endif; ?>
             </div>
         </div>
@@ -324,6 +324,50 @@ require_once __DIR__ . '/includes/header.php';
         </svg>
         <p class="text-gray-500 text-lg">Este aluno ainda não está matriculado em nenhum curso</p>
     </div>
+<?php endif; ?>
+
+<?php if (getUserType() === 'gestor' || getUserType() === 'diretor'): ?>
+<div id="modalEditar" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold">Editar Aluno</h3>
+            <button onclick="fecharModalEditar()" class="text-gray-600 hover:text-gray-900 text-2xl">&times;</button>
+        </div>
+        <form method="POST" action="/gestor/alunos.php" enctype="multipart/form-data" class="space-y-4">
+            <input type="hidden" name="acao" value="editar">
+            <input type="hidden" name="id" value="<?= $aluno['id'] ?>">
+            <input type="hidden" name="redirect_to" value="/aluno_perfil.php?id=<?= $aluno['id'] ?>">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                <input type="text" name="nome" value="<?= htmlspecialchars($aluno['nome']) ?>" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Data de Nascimento</label>
+                <input type="date" name="data_nascimento" value="<?= $aluno['data_nascimento'] ?? '' ?>" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Endereço</label>
+                <textarea name="endereco" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"><?= htmlspecialchars($aluno['endereco'] ?? '') ?></textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nova Foto (deixe em branco para não alterar)</label>
+                <input type="file" name="foto" accept="image/*" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition">
+                Salvar Alterações
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+function abrirModalEditar() {
+    document.getElementById('modalEditar').classList.remove('hidden');
+}
+function fecharModalEditar() {
+    document.getElementById('modalEditar').classList.add('hidden');
+}
+</script>
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
